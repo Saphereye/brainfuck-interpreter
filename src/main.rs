@@ -1,5 +1,6 @@
+use anyhow::Error;
 use clap::{App, Arg};
-use color_eyre::eyre::Result;
+use anyhow::Context;
 
 use std::fs;
 use std::io;
@@ -21,7 +22,7 @@ impl Cpu {
         }
     }
 
-    fn run(&mut self, pre_defined_input: Option<String>) -> Result<()> {
+    fn run(&mut self, pre_defined_input: Option<String>) -> Result<(), Error> {
         let mut tape: Vec<u8> = vec![0; self.tape_size];
         let mut instruction_pointer = 0;
         let mut input_index: usize = 0;
@@ -107,9 +108,6 @@ impl Cpu {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(not(debug_assertions))]
-    color_eyre::install()?;
-
     // Usage
     // cargo run -- -i examples/hello_world.bf
     // cargo run -- -i examples/hello_world.bf -s 2048
@@ -140,7 +138,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Some(input_file) = matches.value_of("input") {
         let filename = input_file;
-        input = fs::read_to_string(filename)?;
+        input = fs::read_to_string(filename).with_context(|| format!("Failed to read file: {}", filename))?;
     }
 
     if let Some(input_string) = matches.value_of("size") {
