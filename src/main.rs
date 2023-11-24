@@ -42,19 +42,17 @@ impl Cpu {
                         println!("Pushing char(u8): {:?}", tape[self.data_pointer]);
                     }
                 }
-                ',' => {
-                    match pre_defined_input {
-                        Some(ref input) => {
-                            tape[self.data_pointer] = input.as_bytes()[input_index];
-                            input_index += 1;
-                        }
-                        None => {
-                            let mut input = String::new();
-                            io::stdin().read_line(&mut input)?;
-                            tape[self.data_pointer] = input.as_bytes()[0];
-                        }
+                ',' => match pre_defined_input {
+                    Some(ref input) => {
+                        tape[self.data_pointer] = input.as_bytes()[input_index];
+                        input_index += 1;
                     }
-                }
+                    None => {
+                        let mut input = String::new();
+                        io::stdin().read_line(&mut input)?;
+                        tape[self.data_pointer] = input.as_bytes()[0];
+                    }
+                },
                 '[' => {
                     if tape[self.data_pointer] == 0 {
                         let mut loop_count = 1;
@@ -103,7 +101,7 @@ impl Cpu {
 
         #[cfg(not(debug_assertions))]
         println!("{}", self.output);
-        
+
         Ok(())
     }
 }
