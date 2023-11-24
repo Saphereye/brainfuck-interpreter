@@ -90,7 +90,7 @@ impl Cpu {
             instruction_pointer += 1;
         }
 
-
+        #[cfg(debug_assertions)]
         for character in self.output.chars() {
             if character.is_ascii_graphic() {
                 print!("{}", character);
@@ -98,7 +98,12 @@ impl Cpu {
                 print!("{:?}", character);
             }
         }
+        #[cfg(debug_assertions)]
         println!();
+
+        #[cfg(not(debug_assertions))]
+        println!("{}", self.output);
+        
         Ok(())
     }
 }
