@@ -121,7 +121,6 @@ impl Cpu {
                 '|' => tape[self.data_pointer] |= self.storage,
 
                 // Extended commands II
-
                 _ => (),
             }
             instruction_pointer += 1;
@@ -145,7 +144,7 @@ impl Cpu {
     }
 }
 
-fn main() -> Result<(),anyhow::Error> {
+fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
     // Usage
     // cargo run -- -i examples/hello_world.bf
@@ -222,6 +221,7 @@ mod tests {
             ),
             2048,
         );
+        cpu.one_shot_output = true;
         let result = cpu.run(None);
         assert!(result.is_ok());
         assert_eq!(cpu.output, "Hello World!\n");
@@ -275,6 +275,7 @@ mod tests {
         >++.                    And finally a newline from Cell #6
         "#;
         let mut cpu = Cpu::new(String::from(program), 2048);
+        cpu.one_shot_output = true;
         let result = cpu.run(None);
         assert!(result.is_ok());
         assert_eq!(cpu.output, "Hello World!\n");
@@ -305,6 +306,7 @@ mod tests {
         < .        Print out c0 which has the value 55 which translates to "7"!
         "#;
         let mut cpu = Cpu::new(String::from(program), 2048);
+        cpu.one_shot_output = true;
         let result = cpu.run(None);
         assert!(result.is_ok());
         assert_eq!(cpu.output, "7");
@@ -316,6 +318,7 @@ mod tests {
         ,.
         "#;
         let mut cpu = Cpu::new(String::from(program), 2048);
+        cpu.one_shot_output = true;
         let result = cpu.run(Some("1".to_string()));
         assert!(result.is_ok());
         assert_eq!(cpu.output, "1");
