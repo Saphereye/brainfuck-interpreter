@@ -1,11 +1,12 @@
 use anyhow::Context;
 use anyhow::Error;
+use anyhow::Ok;
 use clap::{App, Arg};
 
+use pretty_env_logger::env_logger;
 use std::fs;
 use std::io;
 use std::io::Read;
-use pretty_env_logger::env_logger;
 
 struct Cpu {
     feed_tape: String,
@@ -13,6 +14,9 @@ struct Cpu {
     output: String,
     tape_size: usize,
     one_shot_output: bool,
+
+    // Extended commands I
+    storage: u8,
 }
 
 impl Cpu {
@@ -23,6 +27,7 @@ impl Cpu {
             output: String::new(),
             tape_size,
             one_shot_output: false,
+            storage: 0,
         }
     }
 
@@ -33,6 +38,7 @@ impl Cpu {
 
         while instruction_pointer < self.feed_tape.len() {
             match self.feed_tape.chars().nth(instruction_pointer).unwrap() {
+                // Basic Commands
                 '>' => {
                     if self.data_pointer < self.tape_size - 1 {
                         self.data_pointer += 1
@@ -72,7 +78,7 @@ impl Cpu {
                         io::stdin().read_exact(&mut input)?;
 
                         log::debug!("Input: {:?}", input);
-                        
+
                         tape[self.data_pointer] = input[0];
                     }
                 },
@@ -102,10 +108,20 @@ impl Cpu {
                         }
                     }
                 }
-                // Debugging
-                // '#' => println!("Tape: {:?}", tape),
-                // '^' => println!("Data Pointer: {}", self.data_pointer),
-                // '!' => println!("Output: {}", self.output),
+
+                // Extended commands I
+                '@' => break,
+                '$' => self.storage = tape[self.data_pointer],
+                '!' => tape[self.data_pointer] = self.storage,
+                '}' => tape[self.data_pointer] >>= 1,
+                '{' => tape[self.data_pointer] <<= 1,
+                '~' => tape[self.data_pointer] = !tape[self.data_pointer],
+                '^' => tape[self.data_pointer] ^= self.storage,
+                '&' => tape[self.data_pointer] &= self.storage,
+                '|' => tape[self.data_pointer] |= self.storage,
+
+                // Extended commands II
+
                 _ => (),
             }
             instruction_pointer += 1;
@@ -129,7 +145,7 @@ impl Cpu {
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(),anyhow::Error> {
     env_logger::init();
     // Usage
     // cargo run -- -i examples/hello_world.bf
@@ -172,7 +188,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let mut cpu = Cpu::new(input, tape_size);
-    
+
     log::trace!("Running program");
     cpu.run(None)?;
 
