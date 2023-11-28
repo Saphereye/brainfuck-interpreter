@@ -58,7 +58,7 @@ impl Cpu {
                         print!("{}", tape[self.data_pointer] as char);
                     }
 
-                    log::debug!("Output: '{}'", tape[self.data_pointer] as char);
+                    // log::debug!("Output: '{}'", tape[self.data_pointer] as char);
 
                     // #[cfg(debug_assertions)]
                     // if (tape[self.data_pointer] as char).is_ascii_graphic() {
@@ -77,7 +77,7 @@ impl Cpu {
                         // read a single character
                         io::stdin().read_exact(&mut input)?;
 
-                        log::debug!("Input: {:?}", input);
+                        // log::debug!("Input: {:?}", input);
 
                         tape[self.data_pointer] = input[0];
                     }
@@ -109,7 +109,7 @@ impl Cpu {
                     }
                 }
 
-                // Extended commands I
+                // Extended commands I (https://esolangs.org/wiki/Extended_Brainfuck#Extended_Type_I)
                 '@' => break,
                 '$' => self.storage = tape[self.data_pointer],
                 '!' => tape[self.data_pointer] = self.storage,
@@ -120,7 +120,33 @@ impl Cpu {
                 '&' => tape[self.data_pointer] &= self.storage,
                 '|' => tape[self.data_pointer] |= self.storage,
 
-                // Extended commands II
+                // Extended commands II (https://esolangs.org/wiki/Extended_Brainfuck#Extended_Type_II)
+                '?' => todo!(),
+                '(' => todo!(),
+                ')' => todo!(),
+                '*' => tape[self.data_pointer] = tape[self.data_pointer].wrapping_mul(self.storage),
+                '/' => {
+                    if self.storage != 0 {
+                        tape[self.data_pointer] = tape[self.data_pointer].wrapping_div(self.storage)
+                    } else {
+                        log::error!(
+                            "Division by zero, instruction pointer: {}, current char: /",
+                            instruction_pointer
+                        );
+                    }
+                }
+                '=' => tape[self.data_pointer] = tape[self.data_pointer].wrapping_add(self.storage),
+                '_' => tape[self.data_pointer] = tape[self.data_pointer].wrapping_sub(self.storage),
+                '%' => {
+                    if self.storage != 0 {
+                        tape[self.data_pointer] = tape[self.data_pointer].wrapping_rem(self.storage)
+                    } else {
+                        log::error!(
+                            "Division by zero, instruction pointer: {}, current char: %",
+                            instruction_pointer
+                        );
+                    }
+                }
                 _ => (),
             }
             instruction_pointer += 1;
