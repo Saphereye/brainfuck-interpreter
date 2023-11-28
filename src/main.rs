@@ -1,15 +1,18 @@
+use anyhow::Context;
 use anyhow::Error;
 use clap::{App, Arg};
-use anyhow::Context;
 
 use std::fs;
 use std::io;
+use std::io::Read;
+use pretty_env_logger::env_logger;
 
 struct Cpu {
     feed_tape: String,
     data_pointer: usize,
     output: String,
     tape_size: usize,
+    one_shot_output: bool,
 }
 
 impl Cpu {
@@ -19,6 +22,7 @@ impl Cpu {
             data_pointer: 0,
             output: String::new(),
             tape_size,
+            one_shot_output: false,
         }
     }
 
@@ -29,19 +33,33 @@ impl Cpu {
 
         while instruction_pointer < self.feed_tape.len() {
             match self.feed_tape.chars().nth(instruction_pointer).unwrap() {
-                '>' => self.data_pointer += 1,
-                '<' => self.data_pointer -= 1,
+                '>' => {
+                    if self.data_pointer < self.tape_size - 1 {
+                        self.data_pointer += 1
+                    }
+                }
+                '<' => {
+                    if self.data_pointer != 0 {
+                        self.data_pointer -= 1
+                    }
+                }
                 '+' => tape[self.data_pointer] = tape[self.data_pointer].wrapping_add(1),
                 '-' => tape[self.data_pointer] = tape[self.data_pointer].wrapping_sub(1),
                 '.' => {
-                    self.output.push(tape[self.data_pointer] as char);
-
-                    #[cfg(debug_assertions)]
-                    if (tape[self.data_pointer] as char).is_ascii_graphic() {
-                        println!("Pushing char: {}", tape[self.data_pointer] as char);
+                    if self.one_shot_output {
+                        self.output.push(tape[self.data_pointer] as char);
                     } else {
-                        println!("Pushing char(u8): {:?}", tape[self.data_pointer]);
+                        print!("{}", tape[self.data_pointer] as char);
                     }
+
+                    log::debug!("Output: '{}'", tape[self.data_pointer] as char);
+
+                    // #[cfg(debug_assertions)]
+                    // if (tape[self.data_pointer] as char).is_ascii_graphic() {
+                    //     println!("Pushing char: {}", tape[self.data_pointer] as char);
+                    // } else {
+                    //     println!("Pushing char(u8): {:?}", tape[self.data_pointer]);
+                    // }
                 }
                 ',' => match pre_defined_input {
                     Some(ref input) => {
@@ -49,9 +67,13 @@ impl Cpu {
                         input_index += 1;
                     }
                     None => {
-                        let mut input = String::new();
-                        io::stdin().read_line(&mut input)?;
-                        tape[self.data_pointer] = input.as_bytes()[0];
+                        let mut input = [0];
+                        // read a single character
+                        io::stdin().read_exact(&mut input)?;
+
+                        log::debug!("Input: {:?}", input);
+                        
+                        tape[self.data_pointer] = input[0];
                     }
                 },
                 '[' => {
@@ -108,6 +130,7 @@ impl Cpu {
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
     // Usage
     // cargo run -- -i examples/hello_world.bf
     // cargo run -- -i examples/hello_world.bf -s 2048
@@ -137,16 +160,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut tape_size: usize = 2048;
 
     if let Some(input_file) = matches.value_of("input") {
+        log::trace!("Reading {}.bf file", input_file.to_string());
         let filename = input_file;
-        input = fs::read_to_string(filename).with_context(|| format!("Failed to read file: {}", filename))?;
+        input = fs::read_to_string(filename)
+            .with_context(|| format!("Failed to read file: {}", filename))?;
     }
 
     if let Some(input_string) = matches.value_of("size") {
+        log::trace!("Setting tape size to {}", input_string.to_string());
         tape_size = input_string.parse()?;
     }
 
     let mut cpu = Cpu::new(input, tape_size);
-
+    
+    log::trace!("Running program");
     cpu.run(None)?;
 
     Ok(())
