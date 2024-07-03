@@ -1,3 +1,4 @@
+#[doc = include_str!("../README.md")]
 use anyhow::Context;
 use anyhow::Error;
 use anyhow::Ok;
@@ -13,14 +14,19 @@ struct Cpu {
     data_pointer: usize,
     output: String,
     tape_size: usize,
+
+    /// The output is printed all at once at the end of the program
     one_shot_output: bool,
 
-    // Extended commands I
+    /// Extended commands level
+    level: u8,
+
+    // Extended commands I helper
     storage: u8,
 }
 
 impl Cpu {
-    fn new(feed_tape: String, tape_size: usize) -> Self {
+    fn new(feed_tape: String, tape_size: usize, level: u8) -> Self {
         Self {
             feed_tape,
             data_pointer: 0,
@@ -28,15 +34,42 @@ impl Cpu {
             tape_size,
             one_shot_output: false,
             storage: 0,
+            level,
         }
     }
 
-    fn run(&mut self, pre_defined_input: Option<String>) -> Result<(), Error> {
+    /// Main core of the program
+    ///
+    /// The brainfuck instruction can be summarised as follows:
+    ///
+    /// | Instruction | Description                                           |
+    /// |-------------|-------------------------------------------------------|
+    /// | `<`         | head0 = head0 - 1                                     |
+    /// | `>`         | head0 = head0 + 1                                     |
+    /// | `{`         | head1 = head1 - 1                                     |
+    /// | `}`         | head1 = head1 + 1                                     |
+    /// | `-`         | tape[head0] = tape[head0] - 1                         |
+    /// | `+`         | tape[head0] = tape[head0] + 1                         |
+    /// | `.`         | tape[head1] = tape[head0]                             |
+    /// | `,`         | tape[head0] = tape[head1]                             |
+    /// | `[`         | if (tape[head0] == 0): jump forwards to matching `]`  |
+    /// | `]`         | if (tape[head0] != 0): jump backwards to matching `[` |
+    ///
+    /// > source: arXiv:2406.19108
+    fn run(&mut self, input: Option<String>) -> Result<(), Error> {
         let mut tape: Vec<u8> = vec![0; self.tape_size];
         let mut instruction_pointer = 0;
         let mut input_index: usize = 0;
 
         while instruction_pointer < self.feed_tape.len() {
+            #[cfg(debug_assertions)]
+            log::debug!(
+                "Instruction Pointer: {}, Data Pointer: {}, Current Char: {}",
+                instruction_pointer,
+                self.data_pointer,
+                self.feed_tape.chars().nth(instruction_pointer).unwrap()
+            );
+
             match self.feed_tape.chars().nth(instruction_pointer).unwrap() {
                 // Basic Commands
                 '>' => {
@@ -67,7 +100,7 @@ impl Cpu {
                     //     println!("Pushing char(u8): {:?}", tape[self.data_pointer]);
                     // }
                 }
-                ',' => match pre_defined_input {
+                ',' => match input {
                     Some(ref input) => {
                         tape[self.data_pointer] = input.as_bytes()[input_index];
                         input_index += 1;
@@ -110,41 +143,93 @@ impl Cpu {
                 }
 
                 // Extended commands I (https://esolangs.org/wiki/Extended_Brainfuck#Extended_Type_I)
-                '@' => break,
-                '$' => self.storage = tape[self.data_pointer],
-                '!' => tape[self.data_pointer] = self.storage,
-                '}' => tape[self.data_pointer] >>= 1,
-                '{' => tape[self.data_pointer] <<= 1,
-                '~' => tape[self.data_pointer] = !tape[self.data_pointer],
-                '^' => tape[self.data_pointer] ^= self.storage,
-                '&' => tape[self.data_pointer] &= self.storage,
-                '|' => tape[self.data_pointer] |= self.storage,
+                '@' | '$' | '!' | '}' | '{' | '~' | '^' | '&' | '|' => {
+                    if self.level < 1 {
+                        instruction_pointer += 1;
+                        continue;
+                    }
 
-                // Extended commands II (https://esolangs.org/wiki/Extended_Brainfuck#Extended_Type_II)
-                '?' => todo!(),
-                '(' => todo!(),
-                ')' => todo!(),
-                '*' => tape[self.data_pointer] = tape[self.data_pointer].wrapping_mul(self.storage),
-                '/' => {
-                    if self.storage != 0 {
-                        tape[self.data_pointer] = tape[self.data_pointer].wrapping_div(self.storage)
-                    } else {
-                        log::error!(
-                            "Division by zero, instruction pointer: {}, current char: /",
-                            instruction_pointer
-                        );
+                    match self.feed_tape.chars().nth(instruction_pointer).unwrap() {
+                        '@' => break,
+                        '$' => self.storage = tape[self.data_pointer],
+                        '!' => tape[self.data_pointer] = self.storage,
+                        '}' => tape[self.data_pointer] >>= 1,
+                        '{' => tape[self.data_pointer] <<= 1,
+                        '~' => tape[self.data_pointer] = !tape[self.data_pointer],
+                        '^' => tape[self.data_pointer] ^= self.storage,
+                        '&' => tape[self.data_pointer] &= self.storage,
+                        '|' => tape[self.data_pointer] |= self.storage,
+                        _ => unreachable!("The level 1 commands have already been matched"),
                     }
                 }
-                '=' => tape[self.data_pointer] = tape[self.data_pointer].wrapping_add(self.storage),
-                '_' => tape[self.data_pointer] = tape[self.data_pointer].wrapping_sub(self.storage),
-                '%' => {
-                    if self.storage != 0 {
-                        tape[self.data_pointer] = tape[self.data_pointer].wrapping_rem(self.storage)
-                    } else {
-                        log::error!(
-                            "Division by zero, instruction pointer: {}, current char: %",
-                            instruction_pointer
-                        );
+
+                // Extended commands II (https://esolangs.org/wiki/Extended_Brainfuck#Extended_Type_II)
+                '?' | '(' | ')' | '*' | '/' | '=' | '_' | '%' => {
+                    if self.level < 2 {
+                        instruction_pointer += 1;
+                        continue;
+                    }
+
+                    match self.feed_tape.chars().nth(instruction_pointer).unwrap() {
+                        '?' => todo!(),
+                        '(' => todo!(),
+                        ')' => todo!(),
+                        '*' => {
+                            tape[self.data_pointer] =
+                                tape[self.data_pointer].wrapping_mul(self.storage)
+                        }
+                        '/' => {
+                            if self.storage != 0 {
+                                tape[self.data_pointer] =
+                                    tape[self.data_pointer].wrapping_div(self.storage)
+                            } else {
+                                log::error!(
+                                    "Division by zero, instruction pointer: {}, current char: /",
+                                    instruction_pointer
+                                );
+                            }
+                        }
+                        '=' => {
+                            tape[self.data_pointer] =
+                                tape[self.data_pointer].wrapping_add(self.storage)
+                        }
+                        '_' => {
+                            tape[self.data_pointer] =
+                                tape[self.data_pointer].wrapping_sub(self.storage)
+                        }
+                        '%' => {
+                            if self.storage != 0 {
+                                tape[self.data_pointer] =
+                                    tape[self.data_pointer].wrapping_rem(self.storage)
+                            } else {
+                                log::error!(
+                                    "Division by zero, instruction pointer: {}, current char: %",
+                                    instruction_pointer
+                                );
+                            }
+                        }
+                        _ => unreachable!("The level 2 commands have already been matched"),
+                    }
+                }
+                // Extended commands III (https://esolangs.org/wiki/Extended_Brainfuck#Extended_Type_III)
+                'X' | 'x' | 'M' | 'm' | 'L' | 'l' | ':' | '0'..='9' | 'A'..='F' | '#' => {
+                    if self.level < 3 {
+                        instruction_pointer += 1;
+                        continue;
+                    }
+
+                    match self.feed_tape.chars().nth(instruction_pointer).unwrap() {
+                        'X' => todo!(),
+                        'x' => todo!(),
+                        'M' => todo!(),
+                        'm' => todo!(),
+                        'L' => todo!(),
+                        'l' => todo!(),
+                        ':' => todo!(),
+                        '0'..='9' => todo!(),
+                        'A'..='F' => todo!(),
+                        '#' => todo!(),
+                        _ => unreachable!("The level 3 commands have already been matched"),
                     }
                 }
                 _ => (),
@@ -172,9 +257,6 @@ impl Cpu {
 
 fn main() -> Result<(), anyhow::Error> {
     env_logger::init();
-    // Usage
-    // cargo run -- -i examples/hello_world.bf
-    // cargo run -- -i examples/hello_world.bf -s 2048
     let matches = App::new("Brainfuck Interpreter")
         .version("0.1.0")
         .author("Saphereye")
@@ -195,10 +277,25 @@ fn main() -> Result<(), anyhow::Error> {
                 .value_name("TAPE_LEN")
                 .takes_value(true),
         )
+        .arg(
+            Arg::with_name("level")
+                .short("l")
+                .long("level")
+                .help("Specfies the extended brainfuk level. 1-3 is extended, 0 is normal bf")
+                .value_name("LEVEL")
+                .takes_value(true)
+                .default_value("0"),
+        )
         .get_matches();
 
     let mut input: String = String::new();
     let mut tape_size: usize = 2048;
+
+    let level: u8 = matches
+        .value_of("level")
+        .unwrap()
+        .parse()
+        .context("Invalid level command level")?;
 
     if let Some(input_file) = matches.value_of("input") {
         log::trace!("Reading {}.bf file", input_file.to_string());
@@ -212,7 +309,7 @@ fn main() -> Result<(), anyhow::Error> {
         tape_size = input_string.parse()?;
     }
 
-    let mut cpu = Cpu::new(input, tape_size);
+    let mut cpu = Cpu::new(input, tape_size, level);
 
     log::trace!("Running program");
     cpu.run(None)?;
@@ -226,14 +323,14 @@ mod tests {
 
     #[test]
     fn test_new_cpu() {
-        let cpu = Cpu::new(String::from("++++++++++"), 2048);
+        let cpu = Cpu::new(String::from("++++++++++"), 2048, 0);
         assert_eq!(cpu.feed_tape, "++++++++++");
         assert_eq!(cpu.data_pointer, 0);
     }
 
     #[test]
     fn test_run_cpu() {
-        let mut cpu = Cpu::new(String::from("++++++++++"), 2048);
+        let mut cpu = Cpu::new(String::from("++++++++++"), 2048, 0);
         let result = cpu.run(None);
         assert!(result.is_ok());
     }
@@ -246,6 +343,7 @@ mod tests {
             ..+++.>++.<<+++++++++++++++.>.+++.------.--------.>+.>.",
             ),
             2048,
+            0,
         );
         cpu.one_shot_output = true;
         let result = cpu.run(None);
@@ -255,52 +353,8 @@ mod tests {
 
     #[test]
     fn test_hello_world_file() {
-        let program = r#"
-        [ This program prints "Hello World!" and a newline to the screen, its
-        length is 106 active command characters. [It is not the shortest.]
-
-        This loop is an "initial comment loop", a simple way of adding a comment
-        to a BF program such that you don't have to worry about any command
-        characters. Any ".", ",", "+", "-", "<" and ">" characters are simply
-        ignored, the "[" and "]" characters just have to be balanced. This
-        loop and the commands it contains are ignored because the current cell
-        defaults to a value of 0; the 0 value causes this loop to be skipped.
-        ]
-        ++++++++               Set Cell #0 to 8
-        [
-            >++++               Add 4 to Cell #1; this will always set Cell #1 to 4
-            [                   as the cell will be cleared by the loop
-                >++             Add 2 to Cell #2
-                >+++            Add 3 to Cell #3
-                >+++            Add 3 to Cell #4
-                >+              Add 1 to Cell #5
-                <<<<-           Decrement the loop counter in Cell #1
-            ]                   Loop until Cell #1 is zero; number of iterations is 4
-            >+                  Add 1 to Cell #2
-            >+                  Add 1 to Cell #3
-            >-                  Subtract 1 from Cell #4
-            >>+                 Add 1 to Cell #6
-            [<]                 Move back to the first zero cell you find; this will
-                                be Cell #1 which was cleared by the previous loop
-            <-                  Decrement the loop Counter in Cell #0
-        ]                       Loop until Cell #0 is zero; number of iterations is 8
-
-        The result of this is:
-        Cell no :   0   1   2   3   4   5   6
-        Contents:   0   0  72 104  88  32   8
-        Pointer :   ^
-
-        >>.                     Cell #2 has value 72 which is 'H'
-        >---.                   Subtract 3 from Cell #3 to get 101 which is 'e'
-        +++++++..+++.           Likewise for 'llo' from Cell #3
-        >>.                     Cell #5 is 32 for the space
-        <-.                     Subtract 1 from Cell #4 for 87 to give a 'W'
-        <.                      Cell #3 was set to 'o' from the end of 'Hello'
-        +++.------.--------.    Cell #3 for 'rl' and 'd'
-        >>+.                    Add 1 to Cell #5 gives us an exclamation point
-        >++.                    And finally a newline from Cell #6
-        "#;
-        let mut cpu = Cpu::new(String::from(program), 2048);
+        let program = include_str!("../examples/hello_world_big.bf");
+        let mut cpu = Cpu::new(String::from(program), 2048, 0);
         cpu.one_shot_output = true;
         let result = cpu.run(None);
         assert!(result.is_ok());
@@ -309,29 +363,8 @@ mod tests {
 
     #[test]
     fn test_add_numbers() {
-        let program = r#"
-        ++       Cell c0 = 2
-        > +++++  Cell c1 = 5
-
-        [        Start your loops with your cell pointer on the loop counter (c1 in our case)
-        < +      Add 1 to c0
-        > -      Subtract 1 from c1
-        ]        End your loops with the cell pointer on the loop counter
-
-        At this point our program has added 5 to 2 leaving 7 in c0 and 0 in c1
-        but we cannot output this value to the terminal since it is not ASCII encoded
-
-        To display the ASCII character "7" we must add 48 to the value 7
-        We use a loop to compute 48 = 6 * 8
-
-        ++++ ++++  c1 = 8 and this will be our loop counter again
-        [
-        < +++ +++  Add 6 to c0
-        > -        Subtract 1 from c1
-        ]
-        < .        Print out c0 which has the value 55 which translates to "7"!
-        "#;
-        let mut cpu = Cpu::new(String::from(program), 2048);
+        let program = include_str!("../examples/add_numbers.bf");
+        let mut cpu = Cpu::new(String::from(program), 2048, 0);
         cpu.one_shot_output = true;
         let result = cpu.run(None);
         assert!(result.is_ok());
@@ -343,7 +376,7 @@ mod tests {
         let program = r#"
         ,.
         "#;
-        let mut cpu = Cpu::new(String::from(program), 2048);
+        let mut cpu = Cpu::new(String::from(program), 2048, 0);
         cpu.one_shot_output = true;
         let result = cpu.run(Some("1".to_string()));
         assert!(result.is_ok());
